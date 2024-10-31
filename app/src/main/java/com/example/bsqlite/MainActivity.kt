@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,10 +43,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun SplashScreen(onTimeout: ( )-> Unit) {
-        // Con!rola eI temporizador de u a pantalle de inicio
+
         LaunchedEffect(Unit) {
-            delay(3000) // Espera durante 3 segundos
-            onTimeout() // Elimina el comentario de cierre innecesario
+            delay(3000)
+            onTimeout()
         }
 
 
@@ -66,8 +67,14 @@ class MainActivity : ComponentActivity() {
 
     }
 
+
     @Composable
     fun addUser() {
+
+        var editingUserId by remember { mutableStateOf<Int?>(null) }
+        var validationFields = false
+        var users by remember { mutableStateOf(dbHelper.getAllUsers()) }
+
         var name by remember { mutableStateOf("") }
         var last_name by remember { mutableStateOf("") }
         var edad by remember { mutableStateOf("") }
@@ -78,9 +85,9 @@ class MainActivity : ComponentActivity() {
         var address by remember { mutableStateOf("") }
         var expanded by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
-        var users by remember { mutableStateOf(dbHelper.getAllUsers()) }
 
-        Column(modifier = Modifier.padding(16.dp)) {
+
+        Column(modifier = Modifier.padding(25.dp)) {
 
             val fieldModifier = Modifier
                 .fillMaxWidth()
@@ -112,7 +119,9 @@ class MainActivity : ComponentActivity() {
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Género") },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
                 trailingIcon = {
                     IconButton(onClick = { expanded = !expanded }) {
                         Icon(
@@ -171,9 +180,19 @@ class MainActivity : ComponentActivity() {
                         phone.isEmpty() || phone.length < 10 -> errorMessage = "Por favor, ingresa un número de teléfono válido."
                         address.isEmpty() -> errorMessage = "La dirección no puede estar vacía."
                         else -> {
+                            // Si todos los campos son válidos
                             errorMessage = ""
+                            validationFields = true
+                        }
+                    }
+
+                    // Si `validationFields` es verdadero (todos los campos son válidos)
+                    if (validationFields) {
+                        if (editingUserId == null) {
+                            // Registro de un nuevo usuario
                             if (dbHelper.addUser(name, last_name, edad.toInt(), genero, email, phone, address)) {
                                 Toast.makeText(this@MainActivity, "Registro exitoso", Toast.LENGTH_LONG).show()
+                                // Limpia los campos después del registro exitoso
                                 name = ""
                                 last_name = ""
                                 edad = ""
@@ -181,19 +200,30 @@ class MainActivity : ComponentActivity() {
                                 email = ""
                                 phone = ""
                                 address = ""
+                                // Actualiza la lista de usuarios
                                 users = dbHelper.getAllUsers()
                             } else {
                                 Toast.makeText(this@MainActivity, "Error al registrar", Toast.LENGTH_LONG).show()
                             }
+                        } else {
+
+                            if (dbHelper.updateUser(editingUserId!!, name, last_name, edad.toInt(), genero, email, phone, address)) {
+                                Toast.makeText(this@MainActivity, "Actualización exitosa", Toast.LENGTH_LONG).show()
+                                 users = dbHelper.getAllUsers()
+                             } else {
+                                 Toast.makeText(this@MainActivity, "Error al actualizar", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
+
                 },
                 modifier = fieldModifier
+
             ) {
-                Text("Registrar Usuario")
+
+                Text(text = if (editingUserId == null) "Registrar Usuario" else "Actualizar Usuario")
             }
 
-            // Mostrar error si existe
             if (errorMessage.isNotEmpty()) {
                 Text(
                     text = errorMessage,
@@ -201,7 +231,6 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
-
             // Botón para limpiar campos
             Button(
                 onClick = {
@@ -213,6 +242,7 @@ class MainActivity : ComponentActivity() {
                     phone = ""
                     address = ""
                     errorMessage = ""
+                    editingUserId = null
                 },
                 modifier = fieldModifier
             ) {
@@ -223,20 +253,43 @@ class MainActivity : ComponentActivity() {
 
             // Mostrar usuarios registrados
             LazyColumn(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().padding(6.dp)
             ) {
                 items(users) { user ->
-                    UserRow(user)
+                    UserRow(
+                        user = user,
+                        onDelete = {
+                            if (dbHelper.deleteUser(user["id"] as Int)) {
+                                users = dbHelper.getAllUsers()
+                                Toast.makeText(this@MainActivity, "Usuario eliminado", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Error al eliminar", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        onEdit = {
+                            editingUserId = user["id"] as Int
+                            name = user["name"] as String
+                            last_name = user["lastname"] as String
+                            edad = user["age"].toString()
+                            genero = user["gender"] as String
+                            email = user["email"] as String
+                            phone = user["phone"] as String
+                            address = user["address"] as String
+                        }
+                    )
                 }
             }
         }
     }
 
     @Composable
-    fun UserRow(user: Map<String, Any>) {
-        Column(modifier = Modifier.padding(16.dp)
-
+    fun UserRow(user: Map<String, Any>, onDelete: () -> Unit, onEdit: () -> Unit) {
+        Column(modifier = Modifier
+            .fillMaxSize()
+            .background(color = Color(0xFFE8DEF8))
+            .padding(15.dp)
         ) {
+
             Text(text = "Nombre: ${user["name"]}")
             Text(text = "Apellido: ${user["lastname"]}")
             Text(text = "Edad: ${user["age"]}")
@@ -244,6 +297,16 @@ class MainActivity : ComponentActivity() {
             Text(text = "Email: ${user["email"]}")
             Text(text = "Teléfono: ${user["phone"]}")
             Text(text = "Dirección: ${user["address"]}")
+            Spacer(modifier = Modifier.height(8.dp))
+            Row{
+                Button(onClick = onEdit){
+                    Text(text = "Editar")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = onDelete){
+                    Text(text = "Eliminar")
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
